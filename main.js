@@ -1,11 +1,19 @@
 const API_KEY ="66bfe77dabe3f6cee628caada8c0f389";
 
-const DAYS_OF_THE_WEEK = ["sun","mon","tue","wed","thu","fri","sat"];
+const DAYS_OF_THE_WEEK = ["Minggu","Senin","Selasa","Rabu","Kamis","Jumat","Sabtu"];
+
+let selectedCityText;
+let selectedCity;
+const getCitiesUsingGeoLocation = async(searchText) => {
+    const response = await fetch(`http://api.openweathermap.org/geo/1.0/direct?q=${searchText}&limit=5&appid=${API_KEY}`)
+    return response.json();
+}
 
 const getCurrentWeatherData = async()=>{
     const city="Jakarta";
     const response = await fetch(`https://api.openweathermap.org/data/2.5/weather?q=${city}&appid=${API_KEY}&units=metric`)
     return response.json()
+
 }
 
 const getHourlyForecast = async({name: city})=>{
@@ -27,21 +35,26 @@ loadCurrentForecast = ({name, main: {temp, temp_max, temp_min}, weather: [{descr
     currentForecastElement.querySelector(".description").textContent = description;
     currentForecastElement.querySelector(".min-max-temp").textContent = `H: ${formatTemperature(temp_max)} L: ${formatTemperature(temp_min)}`;
     
-    // <h1>City Name</h1>
-    //         <p class="temp">Temp</p>
-    //         <p class="description">Description</p>
-    //         <p class="min-max-temp">High Low</p>
 }
 
-const loadHourlyForecast = (hourlyForecast) => {
+
+const loadHourlyForecast = ({main:{temp:tempNow}, weather:[{icon:iconNow}] } ,hourlyForecast) => {
     console.log(hourlyForecast);
+    const timeFormatter = Intl.DateTimeFormat("en",{
+        hour12:true, hour:"numeric"
+    })
     let dataFor12Hours = hourlyForecast.slice(1, 13);
     const hourlyContainer = document.querySelector(".hourly-container");
-    let innerHTMLString = ``;
+    let innerHTMLString = `<article>
+            <h2 class="time">Now</h2>
+            <img class="icon" src="${createIconUrl(iconNow)}" />
+            <p class="hourly-temp">${formatTemperature(tempNow)}</p>
+        </article>`;
 
     for(let {temp, icon, dt_txt} of dataFor12Hours){
+
         innerHTMLString +=`<article>
-        <h2 class="time">${dt_txt.split(" ")[1]}</h2>
+        <h2 class="time">${timeFormatter.format(new Date(dt_txt))}</h2>
         <img class="icon" src="${createIconUrl(icon)}" />
         <p class="hourly-temp">${formatTemperature(temp)}</p>
     </article>`
@@ -107,11 +120,53 @@ const LoadHumidity = ({main: {humidity}}) => {
     container.querySelector(".humidity-value").textContent = `${humidity} %`;
 }
 
+function debounce(func){
+    let timer;
+    return (...args)=>{
+        clearTimeout(timer);
+        timer = setTimeout(()=>{
+            console.log("debouce");
+            func.apply(this, args)
+        },500);
+    }
+}
+
+const onSearchChange = async(event)=>{
+    let{value}=event.target;
+    const listOfCities = await getCitiesUsingGeoLocation(value);
+    let options ="";
+    for(let{lat, lon, name, state, country} of listOfCities){
+        options +=`<option data-city-details="${JSON.stringify({lat, lon, name})}" value="${name}, ${state}, ${country}"></option>`
+    }
+    document.querySelector("#cities").innerHTML = options;
+    // console.log(listOfCities);
+}
+
+const handleCitySelection = (event)=>{
+    console.log("selection done");
+    selectedCityText = event.target.value;
+    let options = document.querySelectorAll("#cities > option");
+    console.log(options)
+    if (options?.length){
+        let selectedOption = Array.from(options).find(opt=>opt.value === selectedCityText);
+        selectedCity = JSON.parse(selectedOption.getAttribute("data-city-details"));
+        console.log({selectedCity});
+    }
+}
+
+const debounceSearch = debounce((event)=> onSearchChange(event))
+
+
 document.addEventListener("DOMContentLoaded", async()=>{
+
+    const searchInput = document.querySelector("#search");
+    searchInput.addEventListener("input",debounceSearch);
+    searchInput.addEventListener("change", handleCitySelection);
+
     const currentWeather = await getCurrentWeatherData();
     loadCurrentForecast(currentWeather);
     const hourlyForecast =  await getHourlyForecast(currentWeather);
-    loadHourlyForecast(hourlyForecast);
+    loadHourlyForecast(currentWeather, hourlyForecast);
     loadFiveDayForecast(hourlyForecast);
     loadFeelsLike(currentWeather);
     LoadHumidity(currentWeather);
